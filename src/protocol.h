@@ -17,7 +17,9 @@ namespace bridge
     enum class Verb
     {
         Ping,     // ping                      -> ok pong <version>
-        State,    // state                     -> ok world=<0|1> cell=<hex> console=<0|1>
+        State,    // state                     -> ok frame=<n> world=<0|1> cell=<hex> console=<0|1>
+        Wait,     // wait <frames>             -> ok frame=<n>, after that many game frames
+        WaitFrame,// waitframe <n>             -> ok frame=<n>, once game frame n is reached
         Run,      // run <console line>, or a bare console line
         Eval,     // eval <expression>         -> ok <value>
         RunOn,    // on <ref id hex> <console line>
@@ -29,6 +31,7 @@ namespace bridge
     {
         Verb verb = Verb::Invalid;
         uint32_t refId = 0;  // RunOn / EvalOn
+        uint64_t count = 0;  // Wait / WaitFrame
         std::string text;    // console line or expression
         std::string error;   // Invalid: why
     };

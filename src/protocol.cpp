@@ -60,6 +60,21 @@ namespace bridge
             return true;
         }
 
+        bool ParseCount(std::string_view s, uint64_t& out)
+        {
+            if (s.empty() || s.size() > 18)
+                return false;
+            uint64_t v = 0;
+            for (char c : s)
+            {
+                if (c < '0' || c > '9')
+                    return false;
+                v = v * 10 + static_cast<uint64_t>(c - '0');
+            }
+            out = v;
+            return true;
+        }
+
         Request Invalid(std::string why)
         {
             Request r;
@@ -86,6 +101,13 @@ namespace bridge
             r.verb = Verb::Ping;
         else if (IEquals(word, "state") && rest.empty())
             r.verb = Verb::State;
+        else if (IEquals(word, "wait") || IEquals(word, "waitframe"))
+        {
+            bool absolute = IEquals(word, "waitframe");
+            if (!ParseCount(rest, r.count))
+                return Invalid(absolute ? "waitframe <frame number>" : "wait <frames>");
+            r.verb = absolute ? Verb::WaitFrame : Verb::Wait;
+        }
         else if (IEquals(word, "run"))
         {
             if (rest.empty())

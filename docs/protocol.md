@@ -9,13 +9,15 @@ already uses that name, the second one listens on `FNVVR-Test-Bridge-<process id
 - One request line in, one or more answer lines back. Lines starting with `| ` are text the game's console
   printed while the request ran, in order. The last line is `ok`, `ok <detail>` or `err <reason>`.
 - Requests run on the game's main thread, at most 8 per frame, also in the main menu. During loading
-  screens they wait; after 30 seconds without a pick-up the answer is an `err`.
+  screens they wait. A request without an answer after 60 seconds gets an `err` (split longer waits).
 - A request line may be at most 4096 bytes and must not contain control characters (tab is allowed).
 
 | Request | Answer | Notes |
 |---|---|---|
 | `ping` | `ok pong <version>` | |
-| `state` | `ok world=<0\|1> cell=<hex> console=<0\|1>` | world: the player is in a cell; cell: its form ID; console: the console is open |
+| `state` | `ok frame=<n> world=<0\|1> cell=<hex> console=<0\|1>` | frame: game frames since the plugin loaded; world: the player is in a cell; cell: its form ID; console: the console is open |
+| `wait <frames>` | `ok frame=<n>` | Answers after that many game frames (the game keeps running) |
+| `waitframe <n>` | `ok frame=<n>` | Answers once game frame `n` is reached |
 | `run <line>` or just `<line>` | console text, `ok` / `err the console did not take it` | Any console line, as typed in the console |
 | `eval <expression>` | console text, `ok <value>` / `err ...` | Value: a number, `form <hex>`, `"<string>"`, `array` or `none`. Runs with the player as the calling reference. Needs a loaded world. |
 | `on <ref id> <line>` | as `run` | Runs the line on that reference (hex form ID, `0x` optional) |

@@ -16,5 +16,5 @@ namespace bridge
 
     // Main thread only. Runs one parsed request and returns all answer lines (console text as "| ...",
     // the last line "ok ..." or "err ...").
-    std::vector<std::string> Execute(const Request& request);
+    std::vector<std::string> Execute(const Request& request, uint64_t frame);
 }

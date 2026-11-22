@@ -12,7 +12,7 @@ namespace bridge
 {
     namespace
     {
-        constexpr auto kReplyTimeout = std::chrono::seconds(30);
+        constexpr auto kReplyTimeout = std::chrono::seconds(60);
 
         // DACL with a single entry: full access for the user running the game. Nobody else may open the pipe.
         PSECURITY_DESCRIPTOR OwnerOnlyDescriptor()

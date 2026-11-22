@@ -20,6 +20,14 @@ namespace
 
     PluginHandle g_handle = static_cast<PluginHandle>(kPluginHandle_Invalid);
     bridge::PipeServer g_pipe;
+    uint64_t g_frame = 0;                       // game frames since the plugin loaded
+    std::shared_ptr<bridge::Job> g_waiting;     // a "wait"/"waitframe" until g_waitUntil
+    uint64_t g_waitUntil = 0;
+
+    std::string FrameAnswer()
+    {
+        return bridge::Ok("frame=" + std::to_string(g_frame));
+    }
 
     std::string ReadIni(const std::string& path, const char* key, const char* fallback)
     {
@@ -33,12 +41,28 @@ namespace
         switch (message->type)
         {
         case NVSEMessagingInterface::kMessage_MainGameLoop:
-            for (int i = 0; i < kJobsPerFrame; ++i)
+            ++g_frame;
+            if (g_waiting && g_frame >= g_waitUntil)
+            {
+                g_waiting->reply.set_value({FrameAnswer()});
+                g_waiting = nullptr;
+            }
+            for (int i = 0; i < kJobsPerFrame && !g_waiting; ++i)
             {
                 std::shared_ptr<bridge::Job> job = g_pipe.Poll();
                 if (!job)
                     break;
-                job->reply.set_value(bridge::Execute(bridge::Parse(job->line)));
+                bridge::Request request = bridge::Parse(job->line);
+                if (request.verb == bridge::Verb::Wait || request.verb == bridge::Verb::WaitFrame)
+                {
+                    g_waitUntil = request.verb == bridge::Verb::Wait ? g_frame + request.count : request.count;
+                    if (g_frame >= g_waitUntil)
+                        job->reply.set_value({FrameAnswer()});
+                    else
+                        g_waiting = job;
+                    continue;
+                }
+                job->reply.set_value(bridge::Execute(request, g_frame));
             }
             break;
         case NVSEMessagingInterface::kMessage_ExitGame:

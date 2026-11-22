@@ -178,20 +178,24 @@ namespace bridge
         return g_console && g_script;
     }
 
-    std::vector<std::string> Execute(const Request& request)
+    std::vector<std::string> Execute(const Request& request, uint64_t frame)
     {
         switch (request.verb)
         {
         case Verb::Invalid:
             return {Err(request.error)};
+        case Verb::Wait:
+        case Verb::WaitFrame:
+            return {Err("wait is handled by the game loop")};
         case Verb::Ping:
             return {Ok("pong " BRIDGE_VERSION)};
         case Verb::State:
         {
             TESObjectREFR* player = Player();
             ConsoleManager* console = Console();
-            char out[96];
-            std::snprintf(out, sizeof(out), "world=%d cell=%08X console=%d", WorldLoaded() ? 1 : 0,
+            char out[128];
+            std::snprintf(out, sizeof(out), "frame=%llu world=%d cell=%08X console=%d",
+                static_cast<unsigned long long>(frame), WorldLoaded() ? 1 : 0,
                 player && player->parentCell ? player->parentCell->refID : 0,
                 console && console->IsConsoleOpen() ? 1 : 0);
             return {Ok(out)};

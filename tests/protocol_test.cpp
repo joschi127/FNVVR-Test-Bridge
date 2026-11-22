@@ -40,6 +40,10 @@ static void ParseVerbs()
     Request evalon = Parse("evalon 14 getav health");
     CHECK(evalon.verb == Verb::EvalOn && evalon.refId == 0x14 && evalon.text == "getav health");
 
+    Request wait = Parse("wait 5");
+    CHECK(wait.verb == Verb::Wait && wait.count == 5);
+    CHECK(Parse("waitframe 123").verb == Verb::WaitFrame && Parse("waitframe 123").count == 123);
+
     // "ping" with arguments is an ordinary console line, not the ping verb.
     CHECK(Parse("ping x").verb == Verb::Run);
 }
@@ -53,6 +57,8 @@ static void ParseErrors()
     CHECK(Parse("on zz kill").verb == Verb::Invalid);
     CHECK(Parse("on 14").verb == Verb::Invalid);
     CHECK(Parse("on 123456789 kill").verb == Verb::Invalid);
+    CHECK(Parse("wait").verb == Verb::Invalid);
+    CHECK(Parse("wait x").verb == Verb::Invalid);
     CHECK(Parse(std::string("a\x01" "b")).verb == Verb::Invalid);
     CHECK(Parse(std::string(kMaxLine + 1, 'a')).verb == Verb::Invalid);
 }
