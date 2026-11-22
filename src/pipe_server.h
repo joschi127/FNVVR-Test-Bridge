@@ -7,7 +7,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace bridge
@@ -17,10 +16,11 @@ namespace bridge
     {
         std::string line;
         std::promise<std::vector<std::string>> reply;  // all answer lines, the last one "ok ..." / "err ..."
+        std::atomic<bool> abandoned{false};            // the pipe gave up waiting; the main thread drops the job
     };
 
     // A named pipe for one tool at a time, for the current Windows user only, no remote clients.
-    // Blocking I/O on its own thread; Stop() cancels it with CancelSynchronousIo.
+    // Blocking I/O on its own thread (64 KB stack reservation); Stop() cancels it with CancelSynchronousIo.
     class PipeServer
     {
     public:
@@ -39,12 +39,13 @@ namespace bridge
         std::shared_ptr<Job> Poll();
 
     private:
+        static unsigned long __stdcall ThreadMain(void* self);
         void Serve();
         void ServeClient();
         std::vector<std::string> Hand(const std::string& line);
 
         void* m_pipe = nullptr;
-        std::thread m_worker;
+        void* m_thread = nullptr;
         std::atomic<bool> m_quit{false};
         std::atomic<bool> m_waiting{false};
         std::mutex m_lock;

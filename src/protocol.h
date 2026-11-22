@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -17,6 +18,7 @@ namespace bridge
     enum class Verb
     {
         Ping,     // ping                      -> ok pong <version>
+        Memory,   // memory                    -> ok vfree=.. vlargest=.. vused=.. vtotal=.. private=.. workingset=.. (MB)
         State,    // state                     -> ok frame=<n> world=<0|1> cell=<hex> console=<0|1>
         Wait,     // wait <frames>             -> ok frame=<n>, after that many game frames
         WaitFrame,// waitframe <n>             -> ok frame=<n>, once game frame n is reached
@@ -49,10 +51,16 @@ namespace bridge
         bool Next(std::string& line, bool& overflow);
 
     private:
+        struct Item
+        {
+            std::string line;
+            bool overflow = false;
+        };
+
         size_t m_limit;
-        std::string m_data;
-        bool m_dropping = false;   // inside an over-long line, until its "\n"
-        bool m_overflowed = false; // an overflow waits to be reported
+        std::string m_current;
+        bool m_dropping = false;  // inside an over-long line, until its "\n"
+        std::deque<Item> m_ready; // complete lines and overflows, in the order they arrived
     };
 
     // Console text -> "| " lines (one per line of text, empty lines dropped, \r removed).

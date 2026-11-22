@@ -28,6 +28,7 @@ add_library(FNVVR-Test-Bridge SHARED
     src/game.cpp
     src/pipe_server.cpp
     src/log.cpp
+    src/memory_status.cpp
     src/exports.def
 )
 target_include_directories(FNVVR-Test-Bridge PRIVATE ${XNVSE} ${XNVSE}/nvse ${XNVSE}/nvse/nvse)

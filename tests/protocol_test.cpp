@@ -24,6 +24,7 @@ static void ParseVerbs()
     CHECK(Parse("ping").verb == Verb::Ping);
     CHECK(Parse("  PING \r").verb == Verb::Ping);
     CHECK(Parse("state").verb == Verb::State);
+    CHECK(Parse("memory").verb == Verb::Memory);
 
     Request run = Parse("run player.additem 000E3778 1");
     CHECK(run.verb == Verb::Run && run.text == "player.additem 000E3778 1");
@@ -82,6 +83,11 @@ static void Lines()
     b.Feed("more\nok\n");
     CHECK(b.Next(line, overflow) && line == "ok" && !overflow);
     CHECK(!b.Next(line, overflow));
+
+    // Overflow and a following line in one read: answers keep the order of the requests
+    b.Feed("0123456789abcdefXYZ\nping\n");
+    CHECK(b.Next(line, overflow) && overflow);
+    CHECK(b.Next(line, overflow) && line == "ping" && !overflow);
 }
 
 static void Console()

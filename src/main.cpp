@@ -42,6 +42,8 @@ namespace
         {
         case NVSEMessagingInterface::kMessage_MainGameLoop:
             ++g_frame;
+            if (g_waiting && g_waiting->abandoned)
+                g_waiting = nullptr;  // the tool gave up; later requests must not wait behind it
             if (g_waiting && g_frame >= g_waitUntil)
             {
                 g_waiting->reply.set_value({FrameAnswer()});
@@ -64,6 +66,11 @@ namespace
                 }
                 job->reply.set_value(bridge::Execute(request, g_frame));
             }
+            break;
+        case NVSEMessagingInterface::kMessage_PreLoadGame:
+        case NVSEMessagingInterface::kMessage_NewGame:
+        case NVSEMessagingInterface::kMessage_ExitToMainMenu:
+            bridge::ForgetCompiled();
             break;
         case NVSEMessagingInterface::kMessage_ExitGame:
         case NVSEMessagingInterface::kMessage_ExitGame_Console:
@@ -95,6 +102,12 @@ extern "C"
 
         bridge::OpenLog(root + "FNVVR-Test-Bridge.log");
         bridge::Log("FNVVR-Test-Bridge " BRIDGE_VERSION " loaded (xNVSE %08X)", nvse->nvseVersion);
+        // NVSEScriptInterface::CompileScript exists since xNVSE 6.2.6; the interface has no version field
+        if (nvse->nvseVersion < MAKE_NEW_VEGAS_VERSION(6, 2, 6))
+        {
+            bridge::Log("xNVSE 6.2.6 or newer is needed; off");
+            return true;
+        }
         if (!bridge::InitGame(nvse))
         {
             bridge::Log("xNVSE lacks the console or script interface; off");

@@ -22,6 +22,15 @@ class AnswerTest(unittest.TestCase):
         self.assertEqual(e.detail, "no world loaded")
 
 
+class RequestTest(unittest.TestCase):
+    def test_newline_in_request_is_refused(self):
+        from fnvtest.channels import Channel
+        channel = Channel.__new__(Channel)
+        channel.label = "test"
+        with self.assertRaises(ValueError):
+            channel.ask("ping\nstate")
+
+
 class SessionTest(unittest.TestCase):
     def test_optional_channels_missing(self):
         s = Session(game="auto", vr="auto", game_pipe="FNVVR-Test-None-1", vr_pipe="FNVVR-Test-None-2",

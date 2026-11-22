@@ -12,6 +12,7 @@
 #include "nvse/GameForms.h"
 #include "nvse/GameObjects.h"
 
+#include <cctype>
 #include <cstdio>
 #include <string_view>
 #include <unordered_map>
@@ -35,7 +36,11 @@ namespace bridge
 
         NVSEConsoleInterface* g_console = nullptr;
         NVSEScriptInterface* g_script = nullptr;
-        std::unordered_map<std::string, Script*> g_compiled;  // expression -> compiled function (game owns them)
+        // Compiled eval expressions. xNVSE never frees a compiled script, so every new expression costs a little
+        // memory for the rest of the session; the cache keeps repeats free and the limit bounds the total.
+        constexpr size_t kMaxCompiles = 1024;
+        std::unordered_map<std::string, Script*> g_compiled;
+        size_t g_compiles = 0;
         std::string g_capturePath;
 
         TESObjectREFR* Player()
@@ -139,25 +144,69 @@ namespace bridge
             }
         }
 
+        // An expression naming a form created at run time (ID FFxxxxxx) is not cached: after a load the id
+        // may stand for another form or none.
+        bool NamesDynamicForm(const std::string& expression)
+        {
+            for (size_t i = 0; i + 8 <= expression.size(); ++i)
+            {
+                bool start = i == 0 || !std::isxdigit(static_cast<unsigned char>(expression[i - 1]));
+                bool end = i + 8 == expression.size() || !std::isxdigit(static_cast<unsigned char>(expression[i + 8]));
+                if (!start || !end || std::toupper(static_cast<unsigned char>(expression[i])) != 'F' ||
+                    std::toupper(static_cast<unsigned char>(expression[i + 1])) != 'F')
+                    continue;
+                bool hex = true;
+                for (size_t k = i; k < i + 8; ++k)
+                    hex = hex && std::isxdigit(static_cast<unsigned char>(expression[k]));
+                if (hex)
+                    return true;
+            }
+            return false;
+        }
+
         std::string Evaluate(const std::string& expression, TESObjectREFR* on, bool& ok)
         {
             ok = false;
-            Script*& script = g_compiled[expression];
+            auto cached = g_compiled.find(expression);
+            Script* script = cached != g_compiled.end() ? cached->second : nullptr;
             if (!script)
             {
+                if (g_compiles >= kMaxCompiles)
+                    return "too many different eval expressions this session (xNVSE never frees compiled scripts)";
                 std::string text = "Begin Function {}\n  SetFunctionValue " + expression + "\nEnd\n";
                 script = g_script->CompileScript(text.c_str());
+                ++g_compiles;
                 if (!script)
-                {
-                    g_compiled.erase(expression);
                     return "does not compile";
-                }
+                if (!NamesDynamicForm(expression))
+                    g_compiled[expression] = script;
             }
             NVSEArrayVarInterface::Element result;
             if (!g_script->CallFunction(script, on, nullptr, &result, 0))
                 return "could not run it";
             ok = true;
             return FormatValue(result);
+        }
+
+        // The console output file is the bridge's own while it runs a line, so a scof sent through it would be
+        // undone right away; refuse it instead
+        bool SetsConsoleOutputFile(const std::string& line)
+        {
+            std::string word;
+            for (char c : line)
+            {
+                if (c == ' ' || c == '\t')
+                {
+                    if (word.empty())
+                        continue;
+                    break;
+                }
+                word.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+            }
+            size_t dot = word.find('.');
+            if (dot != std::string::npos)
+                word.erase(0, dot + 1);
+            return word == "scof" || word == "setconsoleoutputfile";
         }
 
         bool RunLine(const std::string& line, TESObjectREFR* on)
@@ -174,8 +223,16 @@ namespace bridge
         g_script = static_cast<NVSEScriptInterface*>(nvse->QueryInterface(kInterface_Script));
         char temp[MAX_PATH];
         DWORD n = GetTempPathA(MAX_PATH, temp);
-        g_capturePath = std::string(temp, n) + "FNVVR-Test-Bridge-" + std::to_string(GetCurrentProcessId()) + ".txt";
+        if (n > 0 && n < MAX_PATH)
+            g_capturePath = std::string(temp, n) + "FNVVR-Test-Bridge-" + std::to_string(GetCurrentProcessId()) + ".txt";
+        else
+            Log("no temp folder; console text is not captured");
         return g_console && g_script;
+    }
+
+    void ForgetCompiled()
+    {
+        g_compiled.clear();
     }
 
     std::vector<std::string> Execute(const Request& request, uint64_t frame)
@@ -187,6 +244,8 @@ namespace bridge
         case Verb::Wait:
         case Verb::WaitFrame:
             return {Err("wait is handled by the game loop")};
+        case Verb::Memory:
+            return {Err("memory is answered by the pipe")};
         case Verb::Ping:
             return {Ok("pong " BRIDGE_VERSION)};
         case Verb::State:
@@ -214,6 +273,8 @@ namespace bridge
                 return {Err("no such reference")};
         }
         bool eval = request.verb == Verb::Eval || request.verb == Verb::EvalOn;
+        if (!eval && SetsConsoleOutputFile(request.text))
+            return {Err("scof is not available through the bridge (it captures console text itself)")};
         if (eval && !WorldLoaded())
             return {Err("no world loaded")};
 

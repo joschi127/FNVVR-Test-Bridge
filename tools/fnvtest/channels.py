@@ -66,6 +66,8 @@ class Channel:
         return line.decode("cp1252", "replace")
 
     def ask(self, request):
+        if any(ord(c) < 0x20 and c != "\t" for c in request):
+            raise ValueError(f"{self.label} channel: a request must be one line without control characters")
         self._f.write(request.encode("cp1252", "replace") + b"\n")
         console = []
         while True:

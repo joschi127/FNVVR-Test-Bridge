@@ -99,6 +99,8 @@ namespace bridge
         Request r;
         if (IEquals(word, "ping") && rest.empty())
             r.verb = Verb::Ping;
+        else if (IEquals(word, "memory") && rest.empty())
+            r.verb = Verb::Memory;
         else if (IEquals(word, "state") && rest.empty())
             r.verb = Verb::State;
         else if (IEquals(word, "wait") || IEquals(word, "waitframe"))
@@ -150,36 +152,32 @@ namespace bridge
                     m_dropping = false;
                 continue;
             }
-            m_data.push_back(c);
-            if (c != '\n' && m_data.size() > m_limit && m_data.find('\n') == std::string::npos)
+            if (c == '\n')
             {
-                m_data.clear();
+                if (!m_current.empty() && m_current.back() == '\r')
+                    m_current.pop_back();
+                m_ready.push_back({std::move(m_current), false});
+                m_current.clear();
+                continue;
+            }
+            m_current.push_back(c);
+            if (m_current.size() > m_limit)
+            {
+                m_current.clear();
                 m_dropping = true;
-                m_overflowed = true;
+                m_ready.push_back({std::string(), true});
             }
         }
     }
 
     bool LineBuffer::Next(std::string& line, bool& overflow)
     {
-        size_t end = m_data.find('\n');
-        if (end != std::string::npos)
-        {
-            line = m_data.substr(0, end);
-            if (!line.empty() && line.back() == '\r')
-                line.pop_back();
-            m_data.erase(0, end + 1);
-            overflow = false;
-            return true;
-        }
-        if (m_overflowed)
-        {
-            m_overflowed = false;
-            line.clear();
-            overflow = true;
-            return true;
-        }
-        return false;
+        if (m_ready.empty())
+            return false;
+        line = std::move(m_ready.front().line);
+        overflow = m_ready.front().overflow;
+        m_ready.pop_front();
+        return true;
     }
 
     std::vector<std::string> ConsoleLines(std::string_view text)

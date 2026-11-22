@@ -62,6 +62,16 @@ class Session:
         self.require(vr=True)
         return self.vr.ask(request)
 
+    # Memory (same process for both channels; the game channel is asked first)
+    def memory(self):
+        """The game process's memory in MB: vfree, vlargest, vused, vtotal, private, workingset."""
+        channel = self.game or self.vr
+        self.require(game=channel is None)
+        answer = channel.ask("memory")
+        if not answer.ok:
+            raise ChannelError(f"memory: {answer.final}")
+        return {key: float(value) for key, value in answer.fields().items()}
+
     # Frames
     def sync(self):
         """Measures the offset between the two frame counters; returns it (None with one channel)."""

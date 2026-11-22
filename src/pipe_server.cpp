@@ -3,42 +3,52 @@
 #include "pipe_server.h"
 
 #include "log.h"
+#include "memory_status.h"
 #include "protocol.h"
 
+#include <chrono>
+
 #include <windows.h>
-#include <sddl.h>
 
 namespace bridge
 {
     namespace
     {
         constexpr auto kReplyTimeout = std::chrono::seconds(60);
+        constexpr SIZE_T kThreadStack = 64 * 1024;
 
-        // DACL with a single entry: full access for the user running the game. Nobody else may open the pipe.
-        PSECURITY_DESCRIPTOR OwnerOnlyDescriptor()
+        // Access rules that let only the game's own user open the pipe. The descriptor and its list point into
+        // this object, so it has to live until the pipe is created.
+        struct UserOnlyAccess
         {
-            PSECURITY_DESCRIPTOR result = nullptr;
-            HANDLE token = nullptr;
-            if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
-                return nullptr;
-            DWORD needed = 0;
-            GetTokenInformation(token, TokenUser, nullptr, 0, &needed);
-            std::vector<BYTE> info(needed);
-            LPWSTR sidText = nullptr;
-            if (needed && GetTokenInformation(token, TokenUser, info.data(), needed, &needed) &&
-                ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(info.data())->User.Sid, &sidText))
-            {
-                std::wstring sddl = std::wstring(L"D:P(A;;GA;;;") + sidText + L")";
-                if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl.c_str(), SDDL_REVISION_1, &result,
-                        nullptr))
-                    result = nullptr;
-                LocalFree(sidText);
-            }
-            CloseHandle(token);
-            return result;
-        }
+            std::vector<BYTE> user;
+            std::vector<BYTE> acl;
+            SECURITY_DESCRIPTOR descriptor{};
 
-        HANDLE OpenPipe(const std::wstring& path, PSECURITY_DESCRIPTOR descriptor)
+            bool Build()
+            {
+                HANDLE token = nullptr;
+                if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+                    return false;
+                DWORD size = 0;
+                GetTokenInformation(token, TokenUser, nullptr, 0, &size);
+                user.resize(size);
+                bool ok = size && GetTokenInformation(token, TokenUser, user.data(), size, &size);
+                CloseHandle(token);
+                if (!ok)
+                    return false;
+
+                PSID sid = reinterpret_cast<TOKEN_USER*>(user.data())->User.Sid;
+                acl.resize(sizeof(ACL) + sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(sid));
+                auto* list = reinterpret_cast<ACL*>(acl.data());
+                return InitializeAcl(list, static_cast<DWORD>(acl.size()), ACL_REVISION) &&
+                    AddAccessAllowedAce(list, ACL_REVISION, GENERIC_ALL, sid) &&
+                    InitializeSecurityDescriptor(&descriptor, SECURITY_DESCRIPTOR_REVISION) &&
+                    SetSecurityDescriptorDacl(&descriptor, TRUE, list, FALSE);
+            }
+        };
+
+        HANDLE OpenPipe(const std::wstring& path, SECURITY_DESCRIPTOR* descriptor)
         {
             SECURITY_ATTRIBUTES attributes{};
             attributes.nLength = sizeof(attributes);
@@ -55,41 +65,54 @@ namespace bridge
 
     std::wstring PipeServer::Start(const std::wstring& name)
     {
-        PSECURITY_DESCRIPTOR descriptor = OwnerOnlyDescriptor();
-        if (!descriptor)
+        UserOnlyAccess access;
+        if (!access.Build())
         {
-            Log("pipe: no owner-only security descriptor (error %lu); not listening", GetLastError());
+            Log("pipe: no user-only access rules (error %lu); not listening", GetLastError());
             return {};
         }
         std::wstring path = L"\\\\.\\pipe\\" + name;
-        HANDLE pipe = OpenPipe(path, descriptor);
+        HANDLE pipe = OpenPipe(path, &access.descriptor);
         if (pipe == INVALID_HANDLE_VALUE && GetLastError() == ERROR_ACCESS_DENIED)
         {
             path += L"-" + std::to_wstring(GetCurrentProcessId());
-            pipe = OpenPipe(path, descriptor);
+            pipe = OpenPipe(path, &access.descriptor);
         }
-        LocalFree(descriptor);
         if (pipe == INVALID_HANDLE_VALUE)
         {
             Log("pipe: CreateNamedPipe failed (error %lu); not listening", GetLastError());
             return {};
         }
         m_pipe = pipe;
-        m_worker = std::thread(&PipeServer::Serve, this);
+        m_thread = CreateThread(nullptr, kThreadStack, &PipeServer::ThreadMain, this,
+            STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr);
+        if (!m_thread)
+        {
+            Log("pipe: CreateThread failed (error %lu); not listening", GetLastError());
+            CloseHandle(m_pipe);
+            m_pipe = nullptr;
+            return {};
+        }
         return path;
+    }
+
+    unsigned long __stdcall PipeServer::ThreadMain(void* self)
+    {
+        static_cast<PipeServer*>(self)->Serve();
+        return 0;
     }
 
     void PipeServer::Stop()
     {
-        if (!m_worker.joinable())
+        if (!m_thread)
             return;
         m_quit = true;
         // The worker blocks in ConnectNamedPipe, ReadFile or WriteFile: cancel that call until it notices m_quit.
-        while (WaitForSingleObject(m_worker.native_handle(), 50) == WAIT_TIMEOUT)
-            CancelSynchronousIo(m_worker.native_handle());
-        m_worker.join();
+        while (WaitForSingleObject(m_thread, 50) == WAIT_TIMEOUT)
+            CancelSynchronousIo(m_thread);
+        CloseHandle(m_thread);
         CloseHandle(m_pipe);
-        m_pipe = nullptr;
+        m_thread = m_pipe = nullptr;
     }
 
     std::shared_ptr<Job> PipeServer::Poll()
@@ -111,14 +134,12 @@ namespace bridge
             m_job = job;
             m_waiting.store(true, std::memory_order_release);
         }
-        for (auto waited = std::chrono::milliseconds(0); waited < kReplyTimeout; waited += std::chrono::milliseconds(100))
+        auto deadline = std::chrono::steady_clock::now() + kReplyTimeout;
+        while (std::chrono::steady_clock::now() < deadline && !m_quit)
         {
             if (answer.wait_for(std::chrono::milliseconds(100)) == std::future_status::ready)
                 return answer.get();
-            if (m_quit)
-                break;
         }
-        // Withdraw it if the main thread has not picked it up yet; if it has, its late reply goes nowhere.
         bool picked;
         {
             std::lock_guard guard(m_lock);
@@ -129,6 +150,7 @@ namespace bridge
                 m_waiting.store(false, std::memory_order_relaxed);
             }
         }
+        job->abandoned = true;  // a picked-up job may still wait for frames on the main thread
         if (m_quit)
             return {Err("the game is closing")};
         return {Err(picked ? "no answer in time" : "the game did not pick up the request in time (loading?)")};
@@ -148,7 +170,13 @@ namespace bridge
             bool overflow = false;
             while (lines.Next(line, overflow))
             {
-                std::vector<std::string> answer = overflow ? std::vector<std::string>{Err("line too long")} : Hand(line);
+                std::vector<std::string> answer;
+                if (overflow)
+                    answer = {Err("line too long")};
+                else if (Parse(line).verb == Verb::Memory)
+                    answer = {Ok(MemoryStatus())};  // answered here, so it also works during loading screens
+                else
+                    answer = Hand(line);
                 std::string out;
                 for (const std::string& l : answer)
                     out.append(l).push_back('\n');
@@ -164,14 +192,15 @@ namespace bridge
     {
         while (!m_quit)
         {
-            BOOL connected = ConnectNamedPipe(m_pipe, nullptr) || GetLastError() == ERROR_PIPE_CONNECTED;
+            BOOL connected = ConnectNamedPipe(m_pipe, nullptr);
+            DWORD error = connected ? 0 : GetLastError();
             if (m_quit)
                 break;
-            if (connected)
+            if (connected || error == ERROR_PIPE_CONNECTED)
                 ServeClient();
-            else if (GetLastError() != ERROR_OPERATION_ABORTED)
+            else if (error != ERROR_OPERATION_ABORTED && error != ERROR_NO_DATA)
             {
-                Log("pipe: ConnectNamedPipe failed (error %lu)", GetLastError());
+                Log("pipe: ConnectNamedPipe failed (error %lu)", error);
                 Sleep(500);
             }
             DisconnectNamedPipe(m_pipe);
