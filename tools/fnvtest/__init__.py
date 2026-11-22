@@ -5,5 +5,6 @@ FNVVR-Test-Bridge. Copyright (c) 2026 joschi127. zlib licence, see LICENSE.
 """
 from .channels import Answer, Channel, ChannelError, GameChannel, VrChannel, GAME_PIPE, VR_PIPE
 from .session import Session
+from . import headset
 
-__all__ = ["Answer", "Channel", "ChannelError", "GameChannel", "VrChannel", "Session", "GAME_PIPE", "VR_PIPE"]
+__all__ = ["Answer", "Channel", "ChannelError", "GameChannel", "VrChannel", "Session", "GAME_PIPE", "VR_PIPE", "headset"]

@@ -22,6 +22,8 @@ may stay on while playing; switch it off when measuring the performance of other
 | Game state | `state` | Game frame, world loaded, current cell, console open |
 | Wait for frames | `wait <n>`, `waitframe <n>` | The game keeps running |
 | Memory status | `memory` | Free/largest/used address space, private and resident memory, MB |
+| Tell the person in the headset | `notify [seconds] <text>` | The game's HUD message with a sound (default 8 s) |
+| Ask the person in the headset | `ask <text> \| <button> ...`, `answer` | The game's message box, one to four buttons |
 | Alive check | `ping` | |
 
 Changes are only in memory, like typing into the console: nothing is saved unless someone saves. Full
@@ -74,6 +76,35 @@ with Session(game=True, vr="auto") as s:   # True = required, "auto" = if reacha
 ```
 
 Every answer is an `Answer` with `ok`, `detail`, `console` (printed lines) and `fields()` (`key=value` pairs).
+
+## Working with a person in the headset
+
+While someone tests in the headset, they cannot read the test tool's output. `fnvtest.headset` talks to them
+in the game:
+
+```python
+from fnvtest import Session, headset
+with Session(game=True, vr=True) as s:
+    headset.start(s)                              # turns the done signal on and says "Raise both hands to signal me"
+    headset.notify(s, "1/3: open the Pip-Boy")    # HUD message with a sound, 8 s
+    headset.remind(s, "1/3: open the Pip-Boy",    # again every 30 s until done() is true
+                   done=lambda: headset.pipboy(s)["state"] == "open")
+    choice = headset.ask(s, "Casing ok?", ["Yes", "No"])   # message box, waits for the click
+    if headset.signal_count(s):                   # both hands held above the head for about a second
+        ...
+```
+
+- Keep notifications short: a HUD message is on screen only for its seconds, and a long one is hard to read
+  in time. Repeat it when the person does not react (`remind`).
+- Start every session with `headset.start()`: the done signal (both hands above the head, counted by FNVVR's
+  VR channel) is off until a tool turns it on, so it never fires while someone plays alone with the channels
+  left on. Agree beforehand what a signal means (usually "done"); when one comes without that, ask what it was
+  for (`ask` with the guesses as buttons) instead of guessing.
+- A question is a menu: depending on the game's settings and mods the world may pause, and it covers an open
+  Pip-Boy. Only one question at a time.
+- The Pip-Boy: `headset.open_pipboy(s)` opens it the way looking at the wrist does, `open_pipboy_by_gesture(s)`
+  by setting the head and left hand so that the wrist is looked at, `pipboy(s)` tells its state and where its
+  screen is (all through FNVVR's VR channel).
 
 ## Performance and memory
 

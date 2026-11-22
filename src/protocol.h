@@ -14,6 +14,8 @@
 namespace bridge
 {
     constexpr size_t kMaxLine = 4096;
+    constexpr size_t kMaxButtons = 4;
+    constexpr float kDefaultNotifySeconds = 8.0f;
 
     enum class Verb
     {
@@ -26,6 +28,9 @@ namespace bridge
         Eval,     // eval <expression>         -> ok <value>
         RunOn,    // on <ref id hex> <console line>
         EvalOn,   // evalon <ref id hex> <expression>
+        Notify,   // notify [seconds] <text>   -> ok, the game's HUD message with a sound
+        Ask,      // ask <text> | <button> ... -> ok, the game's message box with up to four buttons
+        Answer,   // answer                    -> ok none | ok pending | ok <index> <button>
         Invalid,  // see Request::error
     };
 
@@ -34,7 +39,9 @@ namespace bridge
         Verb verb = Verb::Invalid;
         uint32_t refId = 0;  // RunOn / EvalOn
         uint64_t count = 0;  // Wait / WaitFrame
-        std::string text;    // console line or expression
+        float seconds = 8.0f;              // Notify: time on screen
+        std::string text;                  // console line, expression, notification or question
+        std::vector<std::string> buttons;  // Ask
         std::string error;   // Invalid: why
     };
 

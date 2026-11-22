@@ -23,6 +23,10 @@
 // definitions live in GameAPI.cpp, which a plugin does not compile.
 extern const _FormHeap_Allocate FormHeap_Allocate = reinterpret_cast<_FormHeap_Allocate>(0x00401000);
 extern const _FormHeap_Free FormHeap_Free = reinterpret_cast<_FormHeap_Free>(0x00401030);
+// The same for the HUD message and the message box (notify, ask), at the addresses in xNVSE's GameAPI.cpp
+extern const _QueueUIMessage QueueUIMessage = reinterpret_cast<_QueueUIMessage>(0x007052F0);
+extern const _ShowMessageBox ShowMessageBox = reinterpret_cast<_ShowMessageBox>(0x00703E80);
+extern const _ShowMessageBox_button ShowMessageBox_button = reinterpret_cast<_ShowMessageBox_button>(0x0118C684);
 
 namespace bridge
 {
@@ -42,6 +46,19 @@ namespace bridge
         std::unordered_map<std::string, Script*> g_compiled;
         size_t g_compiles = 0;
         std::string g_capturePath;
+
+        // The open question (ask): its text and buttons stay alive while the game shows them
+        bool g_asking = false;
+        int g_answer = -1;  // -1: none yet
+        std::string g_question;
+        std::vector<std::string> g_buttons;
+        constexpr char kNotifySound[] = "UIPopUpMessageGeneral";
+
+        void AnswerCallback()
+        {
+            g_answer = *ShowMessageBox_button;
+            g_asking = false;
+        }
 
         TESObjectREFR* Player()
         {
@@ -248,6 +265,41 @@ namespace bridge
             return {Err("memory is answered by the pipe")};
         case Verb::Ping:
             return {Ok("pong " BRIDGE_VERSION)};
+        case Verb::Notify:
+        {
+            if (!QueueUIMessage(request.text.c_str(), 0, nullptr, kNotifySound, request.seconds, false))
+                return {Err("the game did not take the notification")};
+            return {Ok()};
+        }
+        case Verb::Ask:
+        {
+            if (g_asking)
+                return {Err("a question is open; see answer")};
+            g_question = request.text;
+            g_buttons = request.buttons;
+            const char* b[kMaxButtons] = {};
+            for (size_t i = 0; i < g_buttons.size() && i < kMaxButtons; ++i)
+                b[i] = g_buttons[i].c_str();
+            g_answer = -1;
+            g_asking = true;
+            // The buttons, then NULL (see xNVSE's GameAPI.h)
+            bool shown = ShowMessageBox(g_question.c_str(), 0, 0, AnswerCallback, 0, 0x17, 0.0f, 0.0f,
+                b[0], b[1], b[2], b[3], nullptr);
+            if (!shown)
+            {
+                g_asking = false;
+                return {Err("the game did not show the question")};
+            }
+            return {Ok()};
+        }
+        case Verb::Answer:
+        {
+            if (g_asking)
+                return {Ok("pending")};
+            if (g_answer < 0 || static_cast<size_t>(g_answer) >= g_buttons.size())
+                return {Ok("none")};
+            return {Ok(std::to_string(g_answer) + " " + g_buttons[static_cast<size_t>(g_answer)])};
+        }
         case Verb::State:
         {
             TESObjectREFR* player = Player();

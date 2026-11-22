@@ -24,6 +24,9 @@ already uses that name, the second one listens on `FNVVR-Test-Bridge-<process id
 | `eval <expression>` | console text, `ok <value>` / `err ...` | Value: a number, `form <hex>`, `"<string>"`, `array` or `none`. Runs with the player as the calling reference. Needs a loaded world. |
 | `on <ref id> <line>` | as `run` | Runs the line on that reference (hex form ID, `0x` optional) |
 | `evalon <ref id> <expression>` | as `eval` | |
+| `notify [seconds] <text>` | `ok` / `err ...` | The game's HUD message with a sound, for `seconds` (1-60, default 8; a first word outside that range is part of the text). Shown in the game's queue of HUD messages |
+| `ask <text> \| <button> [\| <button> ...]` | `ok` / `err a question is open; see answer` | The game's message box with one to four buttons. One question at a time |
+| `answer` | `ok pending` / `ok none` / `ok <index> <button>` | The open question's state: still open, no question asked, or the clicked button (index from 0) |
 
 `eval` compiles `SetFunctionValue <expression>` as a user-defined function, so any xNVSE expression works
 (`player.getav health`, `getstage VCG01`, `player.getitemcount 000E3778`, functions from JIP LN, JohnnyGuitar

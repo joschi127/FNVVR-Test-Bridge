@@ -48,5 +48,19 @@ class SessionTest(unittest.TestCase):
             Session(game=True, vr=False, game_pipe="FNVVR-Test-None-3", connect_timeout=0.2)
 
 
+class GestureTest(unittest.TestCase):
+    def test_hand_pose_faces_the_screen_to_the_head(self):
+        from fnvtest import headset
+        # The screen as FNVVR reported it in a run: forward, up, right of the left controller, and its facing
+        screen, facing = (-0.221, -0.038, -0.080), (0.038, -0.241, -0.970)
+        pose = headset.gesture_pose(screen, facing, head=(0.0, 1.65, 0.0), head_pitch=-30.0, distance=0.35)
+        self.assertIsNotNone(pose)
+        x, y, z, yaw, pitch, roll = pose
+        # In front of and below the head, within an arm's reach
+        self.assertLess(z, 0.0)
+        self.assertLess(y, 1.65)
+        self.assertLess((x * x + (y - 1.65) ** 2 + z * z) ** 0.5, 0.8)
+
+
 if __name__ == "__main__":
     unittest.main()

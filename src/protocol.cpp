@@ -134,6 +134,46 @@ namespace bridge
             r.verb = eval ? Verb::EvalOn : Verb::RunOn;
             r.text = text;
         }
+        else if (IEquals(word, "notify"))
+        {
+            // An optional first word that is a number of seconds (1 to 60)
+            std::string_view text;
+            std::string_view first = FirstWord(rest, text);
+            std::string number(first);
+            char* end = nullptr;
+            float seconds = number.empty() ? 0.0f : std::strtof(number.c_str(), &end);
+            if (!number.empty() && end == number.c_str() + number.size() && seconds >= 1.0f && seconds <= 60.0f)
+                r.seconds = seconds;
+            else
+                text = rest;
+            if (text.empty())
+                return Invalid("notify [seconds 1-60] <text>");
+            r.verb = Verb::Notify;
+            r.text = text;
+        }
+        else if (IEquals(word, "ask"))
+        {
+            std::vector<std::string> parts;
+            std::string_view left = rest;
+            while (true)
+            {
+                size_t bar = left.find('|');
+                parts.emplace_back(Trim(left.substr(0, bar)));
+                if (bar == std::string_view::npos)
+                    break;
+                left = left.substr(bar + 1);
+            }
+            bool empty = false;
+            for (const std::string& part : parts)
+                empty = empty || part.empty();
+            if (parts.size() < 2 || parts.size() > kMaxButtons + 1 || empty)
+                return Invalid("ask <text> | <button> [| <button> ...] (one to four buttons)");
+            r.verb = Verb::Ask;
+            r.text = parts.front();
+            r.buttons.assign(parts.begin() + 1, parts.end());
+        }
+        else if (IEquals(word, "answer") && rest.empty())
+            r.verb = Verb::Answer;
         else
         {
             r.verb = Verb::Run;

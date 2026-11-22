@@ -90,6 +90,25 @@ static void Lines()
     CHECK(b.Next(line, overflow) && line == "ping" && !overflow);
 }
 
+static void Headset()
+{
+    Request n = Parse("notify Raise both hands");
+    CHECK(n.verb == Verb::Notify && n.text == "Raise both hands" && n.seconds == kDefaultNotifySeconds);
+    Request t = Parse("notify 15 Look at the wrist");
+    CHECK(t.verb == Verb::Notify && t.text == "Look at the wrist" && t.seconds == 15.0f);
+    Request big = Parse("notify 500 apples");
+    CHECK(big.verb == Verb::Notify && big.text == "500 apples");
+    CHECK(Parse("notify").verb == Verb::Invalid);
+    CHECK(Parse("notify 10").verb == Verb::Invalid);
+
+    Request a = Parse("ask Done? | Yes | No ");
+    CHECK(a.verb == Verb::Ask && a.text == "Done?" && a.buttons.size() == 2 && a.buttons[1] == "No");
+    CHECK(Parse("ask Done?").verb == Verb::Invalid);
+    CHECK(Parse("ask Done? | Yes | | No").verb == Verb::Invalid);
+    CHECK(Parse("ask Q | 1 | 2 | 3 | 4 | 5").verb == Verb::Invalid);
+    CHECK(Parse("answer").verb == Verb::Answer);
+}
+
 static void Console()
 {
     auto l = ConsoleLines("first\r\n\r\n  \nsecond");
@@ -103,6 +122,7 @@ int main()
     ParseVerbs();
     ParseErrors();
     Lines();
+    Headset();
     Console();
     std::printf(g_failed ? "%d check(s) failed\n" : "all checks passed\n", g_failed);
     return g_failed ? 1 : 0;
