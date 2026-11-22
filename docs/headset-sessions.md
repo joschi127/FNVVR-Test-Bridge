@@ -14,6 +14,10 @@ panel's look, a readability question, a click flow and the session tools themsel
 - FNVVR with its VR test channel (`d3d9.vrTestChannel = True`): the done signal and the Pip-Boy helpers use it.
   Notifications and questions alone need only the game channel.
 - The Python tools in [`tools/`](../tools/) (`fnvtest`, no extra packages).
+- SteamVR set for the real headset, not its null driver: other projects' headset-free tests may leave
+  `forcedDriver = null` in `Steam/config/steamvr.vrsettings`, and the headset then stays dark.
+  `python -I tools/fnvtest/steamvr.py` (or `fnvtest.steamvr.check()`, which `headset.start()` calls) warns;
+  it never changes the settings.
 - The bridge takes one client at a time: let one script own the session and send everything through it (or
   use [`tools/watch.py`](../tools/watch.py) and its command queue next to your own tool).
 

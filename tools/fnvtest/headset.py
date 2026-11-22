@@ -8,6 +8,8 @@ FNVVR-Test-Bridge. Copyright (c) 2026 joschi127. zlib licence, see LICENSE.
 import math
 import time
 
+from . import steamvr
+
 from .channels import ChannelError
 
 NOTIFY_SECONDS = 8
@@ -58,7 +60,10 @@ def ask(session, text, buttons, timeout=None, poll=0.5):
 
 
 def start(session, text="Raise both hands to signal me"):
-    """The start of a session with a person in the headset: turns the done signal on and says so."""
+    """The start of a session with a person in the headset: turns the done signal on and says so.
+
+    Warns first when SteamVR is set to its null driver (see steamvr.py)."""
+    steamvr.check()
     session.require(game=True, vr=True)
     session.vr.ask("signal on")
     notify(session, text)
