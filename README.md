@@ -9,8 +9,8 @@ without FNVVR and with or without the co-op mod
 ([FNVVR-Coop-Compat](https://github.com/joschi127/FNVVR-Coop-Compat)). Why it is a separate project:
 [FNVVR ADR 0007](https://github.com/joschi127/FNVVR/blob/coop-compat/docs/adr/0007-where-test-automation-lives.md).
 
-**Not for normal play.** It does nothing unless switched on; keep it off while playing and when measuring
-performance.
+It does nothing unless switched on. Switched on and idle it costs no measurable frame time (measured), so it
+may stay on while playing; switch it off when measuring the performance of other changes.
 
 ## Features
 
@@ -78,8 +78,8 @@ Every answer is an `Answer` with `ok`, `detail`, `console` (printed lines) and `
 ## Performance and memory
 
 Idle and enabled, the plugin does one atomic load per game frame; its pipe thread reserves 64 KB of stack.
-Whether that is measurable is checked by comparing frame times with `Enabled=0` and `Enabled=1`; until then
-keep `Enabled=0` for real play. Memory: the game is a 32-bit process, so per request the plugin only holds
+Measured in VR (2026-11-22, bridge and FNVVR's VR channel on and idle against both off, same spot, 90 fps):
+game thread about 6.3 against 6.6 ms per frame, process about 1.10 against 1.15 cores, so no measurable cost. Memory: the game is a 32-bit process, so per request the plugin only holds
 the request and its answer; compiled `eval` expressions are bounded (see the protocol).
 
 ## Documentation rule
