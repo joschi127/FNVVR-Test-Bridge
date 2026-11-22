@@ -16,7 +16,7 @@ may stay on while playing; switch it off when measuring the performance of other
 
 | Feature | Request | Notes |
 |---|---|---|
-| Run console commands | `<console line>` or `run <line>` | Answer carries the text the console printed |
+| Run console commands | `<console line>` or `run <line>` | Answer carries the text the console printed (many game commands print only when typed into the console itself; read values with `eval`) |
 | Read values | `eval <expression>` | Any xNVSE expression: `player.getav health`, `getstage VCG01` ... |
 | Act on another reference | `on <ref id> <line>`, `evalon <ref id> <expr>` | Hex form ID |
 | Game state | `state` | Game frame, world loaded, current cell, console open |
@@ -102,6 +102,10 @@ with Session(game=True, vr=True) as s:
   for (`ask` with the guesses as buttons) instead of guessing.
 - A question is a menu: depending on the game's settings and mods the world may pause, and it covers an open
   Pip-Boy. Only one question at a time.
+- Watching: `python -I tools/watch.py <log>` waits until a world is loaded, then logs menu and hover changes;
+  lines written to `<log>.cmd` are sent through the same connection (the bridge takes one client at a time).
+  `python -I tools/window_shot.py "<window title>" <file.png>` saves a window, for example FNVVR's emulator
+  preview ("VR preview (left eye | right eye)").
 - The Pip-Boy: `headset.open_pipboy(s)` opens it the way looking at the wrist does, `open_pipboy_by_gesture(s)`
   by setting the head and left hand so that the wrist is looked at, `pipboy(s)` tells its state and where its
   screen is (all through FNVVR's VR channel).

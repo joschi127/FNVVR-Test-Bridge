@@ -20,7 +20,7 @@ already uses that name, the second one listens on `FNVVR-Test-Bridge-<process id
 | `state` | `ok frame=<n> world=<0\|1> cell=<hex> console=<0\|1>` | frame: game frames since the plugin loaded; world: the player is in a cell; cell: its form ID; console: the console is open |
 | `wait <frames>` | `ok frame=<n>` | Answers after that many game frames (the game keeps running) |
 | `waitframe <n>` | `ok frame=<n>` | Answers once game frame `n` is reached |
-| `run <line>` or just `<line>` | console text, `ok` / `err the console did not take it` | Any console line, as typed in the console, except `scof` (the bridge uses the console output file itself) |
+| `run <line>` or just `<line>` | console text, `ok` / `err the console did not take it` | Any console line, as typed in the console, except `scof` (the bridge uses the console output file itself). The console text is what the line printed; many game commands (`tgm`, `getav`, `getgamesetting` ...) print only when typed into the console itself, so read values with `eval` |
 | `eval <expression>` | console text, `ok <value>` / `err ...` | Value: a number, `form <hex>`, `"<string>"`, `array` or `none`. Runs with the player as the calling reference. Needs a loaded world. |
 | `on <ref id> <line>` | as `run` | Runs the line on that reference (hex form ID, `0x` optional) |
 | `evalon <ref id> <expression>` | as `eval` | |
