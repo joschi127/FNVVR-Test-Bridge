@@ -31,7 +31,7 @@ Console text is captured by pointing the game's console output file (the mechani
 command) at a temporary file for the duration of the request; a player's own `scof` setting is restored
 afterwards.
 
-Example (as printed by `tools/bridge.py`; console text, if any, appears as `| ...` lines):
+Example (as printed by `tools/fnvtest.py`; console text, if any, appears as `| ...` lines):
 
 ```
 > ping
