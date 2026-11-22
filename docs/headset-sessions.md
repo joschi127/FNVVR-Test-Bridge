@@ -94,15 +94,15 @@ with Session(game=True, vr=True) as s:
 
 The greeting in the HUD (`headset.start`):
 
-<img src="https://github.com/user-attachments/assets/2a834f85-3c2d-496a-8938-92017321d6fb" width="400" alt="The greeting as the game's HUD message: Raise both hands to signal me">
+<img src="https://github.com/user-attachments/assets/7d126430-2cdf-4a99-b9de-ea69d8f7f584" width="400" alt="The greeting as the game's HUD message: Raise both hands to signal me">
 
 A question in the game's message box (`ask`), answered with the laser:
 
-<img src="https://github.com/user-attachments/assets/440124fa-b395-4867-80d1-dfe853a1c849" width="360" alt="A question with Yes and No buttons in the game's message box">
+<img src="https://github.com/user-attachments/assets/4ece22cf-94ed-4203-b3f5-1c2e2c4924f9" width="360" alt="A real question from a session: Casing and round corners ok? Yes, No, Not sure">
 
 The Pip-Boy on its panel in FNVVR, which a session opened and checked:
 
-<img src="https://github.com/user-attachments/assets/d8217b62-b697-4665-bc0c-8ae581a5c0d7" width="400" alt="The Pip-Boy shown on FNVVR's menu panel with its casing and lamp bar">
+<img src="https://github.com/user-attachments/assets/3b17b24f-f24a-4adf-b707-0bb7d4b965fe" width="400" alt="The Pip-Boy shown on FNVVR's menu panel with its casing and lamp bar">
 
-(Emulator captures, cropped so that little of the game shows; the images live in
+(Emulator captures at full resolution, cropped so that little of the game shows; the images live in
 [issue #1](https://github.com/joschi127/FNVVR-Test-Bridge/issues/1), not in the repository.)
