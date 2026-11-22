@@ -85,6 +85,8 @@ hands-up gesture as "done" and thanks them at the end, so they never take the he
 into one session. The guide has the recommended flow, rules that proved useful and a complete example
 ([examples/headset_session.py](examples/headset_session.py)).
 
+<img src="https://github.com/user-attachments/assets/440124fa-b395-4867-80d1-dfe853a1c849" width="300" alt="A question from the test tool in the game's message box, answered with the laser">
+
 While someone tests in the headset, they cannot read the test tool's output. `fnvtest.headset` talks to them
 in the game:
 
