@@ -59,6 +59,40 @@ def ask(session, text, buttons, timeout=None, poll=0.5):
     return None
 
 
+RECHECK = "Let me re-check"
+
+
+def look(session, hint, max_seconds=60, remind_after=30, poll=0.5):
+    """A viewing pause before a question: shows what to look at, then lets the game run until the person raises
+    both hands (the done signal must be on, see start) or max_seconds pass. Returns True when they signalled.
+
+    A question's message box stops or covers the game and hides FNVVR's panels, so the person looks first."""
+    base = signal_count(session) or 0
+    text = hint + " - raise both hands when ready"
+    notify(session, text)
+    begin = time.monotonic()
+    reminded = False
+    while time.monotonic() - begin < max_seconds:
+        if (signal_count(session) or 0) > base:
+            return True
+        if not reminded and time.monotonic() - begin > remind_after:
+            notify(session, text)
+            reminded = True
+        time.sleep(poll)
+    return False
+
+
+def ask_after_look(session, hint, text, buttons, tries=5, max_seconds=60):
+    """A viewing pause (look), then the question with a "Let me re-check" button that repeats both; returns the
+    chosen button's text (never the re-check), or None after too many re-checks."""
+    for _ in range(tries):
+        look(session, hint, max_seconds)
+        answer = ask(session, text, list(buttons) + [RECHECK], timeout=300)
+        if answer != RECHECK:
+            return answer
+    return None
+
+
 def start(session, text="Raise both hands to signal me"):
     """The start of a session with a person in the headset: turns the done signal on and says so.
 

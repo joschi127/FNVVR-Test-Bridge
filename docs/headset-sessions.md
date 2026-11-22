@@ -50,7 +50,13 @@ panel's look, a readability question, a click flow and the session tools themsel
   Aim for a few words: "2/3: click STATS, then DATA".
 - **Repeat, do not escalate.** No reaction after 30 seconds usually means the message was missed.
 - **Questions cover the view.** A message box is a menu: depending on the game's settings and mods the world may
-  pause, and it lies over an open Pip-Boy. Ask between steps, not while the person is in the middle of one.
+  pause, it lies over an open Pip-Boy, and FNVVR hides its panels (HUD, compass, name plates) while it is open.
+  Ask between steps, not while the person is in the middle of one.
+- **Look first, then ask.** Before each question about something to look at: a short message what to look at,
+  then a viewing pause with the game running, which ends when the person raises both hands (at most about a
+  minute), and only then the question. Every question gets a "Let me re-check" button that repeats the message,
+  the pause and the question, so nobody has to answer without having looked. `headset.ask_after_look()` does
+  this; questions coming one right after the other were too fast to judge (a session in November 2026).
 - **Let the game tell you what happened** (`eval`, `state`, FNVVR's `pipboy`, the hovered interface element),
   and keep questions for what only the person can judge: looks, readability, feel.
 
