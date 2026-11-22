@@ -53,9 +53,12 @@ namespace bridge
         std::string g_question;
         std::vector<std::string> g_buttons;
         constexpr char kNotifySound[] = "UIPopUpMessageGeneral";
+        constexpr uintptr_t kShowMessageBoxCallback = 0x005B4A70; // xNVSE's ShowMessageBox_Callback
 
         void AnswerCallback()
         {
+            // The game's own callback stores the clicked button first (as for MessageBoxEx)
+            reinterpret_cast<void (*)()>(kShowMessageBoxCallback)();
             g_answer = *ShowMessageBox_button;
             g_asking = false;
         }
