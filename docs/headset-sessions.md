@@ -102,7 +102,7 @@ A question in the game's message box (`ask`), answered with the laser:
 
 The Pip-Boy on its panel in FNVVR, which a session opened and checked:
 
-<img src="https://github.com/user-attachments/assets/3b17b24f-f24a-4adf-b707-0bb7d4b965fe" width="400" alt="The Pip-Boy shown on FNVVR's menu panel with its casing and lamp bar">
+<img src="https://github.com/user-attachments/assets/3b17b24f-f24a-4adf-b707-0bb7d4b965fe" width="400" alt="The Pip-Boy shown on FNVVR's menu panel with its casing and rounded corners">
 
 (Emulator captures at full resolution, cropped so that little of the game shows; the images live in
 [issue #1](https://github.com/joschi127/FNVVR-Test-Bridge/issues/1), not in the repository.)
