@@ -36,11 +36,30 @@ With `Enabled=0` the plugin does nothing at all: no pipe, no thread, no log, no 
 
 ## Use
 
+The Python tools in [`tools/`](tools/) speak to both test channels of the FNVVR setup; each is optional:
+
+| Channel | Pipe | Needs | Gives |
+|---|---|---|---|
+| game | `FNVVR-Test-Bridge` | this plugin (`Enabled=1`), xNVSE | console lines, `eval`, console text, game frame number |
+| vr | `FNVVR-Test-VR` | FNVVR with `d3d9.vrTestChannel = True` | head/hand poses, actions, sticks, aiming at panels, captures, VR frame number ([protocol](https://github.com/joschi127/FNVVR/blob/coop-compat/docs/testing/vr-test-channel.md)) |
+
+Neither needs the co-op mod. What works with which setup:
+
+| Setup | game | vr |
+|---|---|---|
+| Flat game with xNVSE | yes | no |
+| FNVVR alone, without xNVSE | no | yes |
+| FNVVR + xNVSE | yes | yes |
+| FNVVR + xNVSE + co-op mod | yes | yes |
+
 ```
-python -I tools/bridge.py ping state "player.additem 000E3778 1" "eval player.getitemcount 000E3778"
+python -I tools/fnvtest.py ping state "player.additem 000E3778 1" "eval player.getitemcount 000E3778"
+python -I tools/fnvtest.py vr:state "vr:aim right menu 0.5 0.9" "vr:press menuselect" sync
 ```
 
-`tools/bridge.py` also works as a Python module (`Bridge().ask(...)`) for test scripts.
+Requests go to the game channel unless prefixed with `vr:`; `sync` measures the offset between the two
+frame counters. In test scripts: `from fnvtest import Session` (`Session(game=True, vr="auto")`, then
+`run`, `eval`, `vr_do`, `sync`, `frame`, `wait_frames`, `wait_until`).
 
 ## Performance
 
@@ -56,7 +75,7 @@ Windows, Visual Studio 2026 with C++ and CMake:
 git submodule update --init
 cmake --preset x86
 cmake --build --preset release      # build/Release/FNVVR-Test-Bridge.dll
-ctest --preset release              # protocol tests (no game needed)
+ctest --preset release              # protocol and Python tool tests (no game needed)
 ```
 
 Only xNVSE's headers are used; game addresses come from xNVSE's public headers and sources.

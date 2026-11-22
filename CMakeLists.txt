@@ -39,3 +39,8 @@ enable_testing()
 add_executable(protocol_test tests/protocol_test.cpp)
 target_link_libraries(protocol_test PRIVATE bridge_core)
 add_test(NAME protocol COMMAND protocol_test)
+
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+    add_test(NAME python_tools COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tests/test_fnvtest.py)
+endif()
