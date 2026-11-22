@@ -79,6 +79,12 @@ Every answer is an `Answer` with `ok`, `detail`, `console` (printed lines) and `
 
 ## Working with a person in the headset
 
+**Guided headset sessions** ([docs/headset-sessions.md](docs/headset-sessions.md)): the test tool greets the
+person in the game, gives short numbered steps in the HUD, asks questions in the game's message box, takes a
+hands-up gesture as "done" and thanks them at the end, so they never take the headset off and many topics fit
+into one session. The guide has the recommended flow, rules that proved useful and a complete example
+([examples/headset_session.py](examples/headset_session.py)).
+
 While someone tests in the headset, they cannot read the test tool's output. `fnvtest.headset` talks to them
 in the game:
 
