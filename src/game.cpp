@@ -267,8 +267,8 @@ namespace bridge
             return {Ok("pong " BRIDGE_VERSION)};
         case Verb::Notify:
         {
-            if (!QueueUIMessage(request.text.c_str(), 0, nullptr, kNotifySound, request.seconds, false))
-                return {Err("the game did not take the notification")};
+            // Its result says nothing reliable (xNVSE's MessageEx ignores it too)
+            QueueUIMessage(request.text.c_str(), 0, nullptr, kNotifySound, request.seconds, false);
             return {Ok()};
         }
         case Verb::Ask:
