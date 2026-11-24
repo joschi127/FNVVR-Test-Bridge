@@ -1,0 +1,3 @@
+LIBRARY fnvvr_null_xr
+EXPORTS
+    xrNegotiateLoaderRuntimeInterface

@@ -1,0 +1,7 @@
+{
+    "file_format_version": "1.0.0",
+    "runtime": {
+        "name": "FNVVR null runtime",
+        "library_path": "./fnvvr_null_xr.dll"
+    }
+}
