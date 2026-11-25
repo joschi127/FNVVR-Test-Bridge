@@ -41,10 +41,50 @@ def remind(session, text, done, every=REPEAT_AFTER, seconds=NOTIFY_SECONDS, time
         time.sleep(poll)
 
 
+MAX_BUTTONS = 4
+
+
+def check_buttons(buttons, extra=0):
+    """Raises ValueError unless there are 1 to MAX_BUTTONS buttons (counting `extra` added by a helper), without
+    "|" in their text: checked before anything is shown, so a script fails at once instead of mid-session."""
+    buttons = list(buttons)
+    if not 1 <= len(buttons) + extra <= MAX_BUTTONS:
+        raise ValueError(f"{len(buttons)} button(s) given, 1 to {MAX_BUTTONS - extra} allowed here")
+    if any("|" in b for b in buttons):
+        raise ValueError("a button's text may not contain '|'")
+
+
+class on_error:
+    """Context manager for a session script: if the script fails, the person in the headset is told so (they see
+    nothing else of it) before the error is raised again.
+
+        with headset.on_error(s):
+            ...
+    """
+
+    TEXT = "Session script error - please quit the game"
+
+    def __init__(self, session, text=TEXT):
+        self.session = session
+        self.text = text
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, kind, error, trace):
+        if kind is not None and not issubclass(kind, KeyboardInterrupt):
+            try:
+                notify(self.session, self.text, 30)
+            except Exception:
+                pass
+        return False
+
+
 def ask(session, text, buttons, timeout=None, poll=0.5):
     """Asks with the game's message box (one to four buttons); returns the chosen button's text, or None
     when the timeout ran out. Only one question at a time."""
     session.require(game=True)
+    check_buttons(buttons)
     answer = session.game.ask("ask " + " | ".join([text] + list(buttons)))
     if not answer.ok:
         raise ChannelError(f"ask: {answer.final}")
@@ -84,7 +124,9 @@ def look(session, hint, max_seconds=60, remind_after=30, poll=0.5):
 
 def ask_after_look(session, hint, text, buttons, tries=5, max_seconds=60):
     """A viewing pause (look), then the question with a "Let me re-check" button that repeats both; returns the
-    chosen button's text (never the re-check), or None after too many re-checks."""
+    chosen button's text (never the re-check), or None after too many re-checks. At most three buttons: the
+    re-check is the fourth."""
+    check_buttons(buttons, extra=1)
     for _ in range(tries):
         look(session, hint, max_seconds)
         answer = ask(session, text, list(buttons) + [RECHECK], timeout=300)
