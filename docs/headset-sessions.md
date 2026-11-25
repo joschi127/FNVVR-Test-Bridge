@@ -25,9 +25,12 @@ panel's look, a readability question, a click flow and the session tools themsel
 
 1. **Agree on the start.** The person says when they start the headset and the game. Start your script then;
    it waits for a loaded save by itself (`state` reports `world=1`), so they need not report it.
-2. **Greet and arm the signal.** `headset.start(session)` turns the done signal on and shows "Raise both hands to
-   signal me". The signal (both hands held above the head for about a second, counted by FNVVR's VR channel) is
-   off until a tool turns it on, so it never fires while someone plays alone with the channels left on.
+2. **Greet and arm the signal.** `headset.start(session)` turns the done signal on and shows "Both hands up:
+   done. Left hand up: repeat". The done signal (both hands held above the head for about a second, counted by
+   FNVVR's VR channel) and the repeat signal (the left hand alone, the right one well below the head; the
+   weapon hand stays free) are off until a tool turns them on, so they never fire while someone plays alone
+   with the channels left on. `headset.look()` shows the current step again on a repeat; it needs an FNVVR
+   whose `state` reports `repeat=`.
 3. **Give one short step at a time**, numbered ("1/3: look at your left wrist"). `notify` shows it as the game's
    HUD message with a sound for 8 seconds; repeat it every 30 seconds while the person has not reacted
    (`remind`, or a loop like `step()` in the example). Watch the game for the step's result where you can (a menu

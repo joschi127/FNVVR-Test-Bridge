@@ -93,7 +93,7 @@ in the game:
 ```python
 from fnvtest import Session, headset
 with Session(game=True, vr=True) as s:
-    headset.start(s)                              # turns the done signal on and says "Raise both hands to signal me"
+    headset.start(s)                              # turns the signals on: both hands up = done, left hand up = repeat
     headset.notify(s, "1/3: open the Pip-Boy")    # HUD message with a sound, 8 s
     headset.remind(s, "1/3: open the Pip-Boy",    # again every 30 s until done() is true
                    done=lambda: headset.pipboy(s)["state"] == "open")
@@ -105,7 +105,7 @@ with Session(game=True, vr=True) as s:
 - Keep notifications short: a HUD message is on screen only for its seconds, and a long one is hard to read
   in time. Repeat it when the person does not react (`remind`).
 - Start every session with `headset.start()`: the done signal (both hands above the head, counted by FNVVR's
-  VR channel) is off until a tool turns it on, so it never fires while someone plays alone with the channels
+  VR channel) and the repeat signal (the left hand alone) are off until a tool turns them on, so it never fires while someone plays alone with the channels
   left on. Agree beforehand what a signal means (usually "done"); when one comes without that, ask what it was
   for (`ask` with the guesses as buttons) instead of guessing.
 - A question is a menu: depending on the game's settings and mods the world may pause, and it covers an open

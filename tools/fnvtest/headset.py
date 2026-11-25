@@ -122,6 +122,7 @@ IGNORE_SIGNAL = 3.0
 def look(session, hint, max_seconds=60, remind_after=30, poll=0.5):
     """A viewing pause before a question: shows what to look at, then lets the game run until the person raises
     both hands (the done signal must be on, see start) or max_seconds pass. Returns True when they signalled.
+    The left hand alone (repeat) shows the message again and starts the wait anew.
 
     A question's message box stops or covers the game and hides FNVVR's panels, so the person looks first.
     A signal in the first IGNORE_SIGNAL seconds does not count."""
@@ -131,11 +132,19 @@ def look(session, hint, max_seconds=60, remind_after=30, poll=0.5):
     # A signal in the first seconds is a leftover of the step before (hands still up), not this step's
     time.sleep(IGNORE_SIGNAL)
     base = signal_count(session) or 0
+    repeats = repeat_count(session) or 0
     reminded = False
     while time.monotonic() - begin < max_seconds:
         if (signal_count(session) or 0) > base:
             return True
-        if not reminded and time.monotonic() - begin > remind_after:
+        now = repeat_count(session) or 0
+        if now > repeats:
+            # The left hand alone: the person missed the step, show it again and wait anew
+            repeats = now
+            notify(session, text)
+            begin = time.monotonic()
+            reminded = False
+        elif not reminded and time.monotonic() - begin > remind_after:
             notify(session, text)
             reminded = True
         time.sleep(poll)
@@ -155,7 +164,7 @@ def ask_after_look(session, hint, text, buttons, tries=5, max_seconds=60):
     return None
 
 
-def start(session, text="Raise both hands to signal me"):
+def start(session, text="Both hands up: done. Left hand up: repeat"):
     """The start of a session with a person in the headset: turns the done signal on and says so.
 
     Warns first when SteamVR is set to its null driver (see steamvr.py)."""
@@ -169,6 +178,14 @@ def signal_count(session):
     """How often the person gave the done signal since it was turned on (None while it is off)."""
     session.require(vr=True)
     value = session.vr.ask("state").fields().get("signal", "off")
+    return None if value == "off" else int(value)
+
+
+def repeat_count(session):
+    """How often the person asked to see the step again (the left hand alone above the head) since the signal was
+    turned on (None while it is off, or with an FNVVR that does not count it)."""
+    session.require(vr=True)
+    value = session.vr.ask("state").fields().get("repeat", "off")
     return None if value == "off" else int(value)
 
 
