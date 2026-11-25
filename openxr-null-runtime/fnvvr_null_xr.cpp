@@ -123,8 +123,13 @@ namespace {
   }
 
   void sleepUntilNs(int64_t when) {
-    static thread_local HANDLE timer = CreateWaitableTimerExW(nullptr, nullptr,
-      CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+    struct Timer {
+      HANDLE handle = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+      ~Timer() { if (handle) CloseHandle(handle); }
+    };
+
+    static thread_local Timer threadTimer;
+    HANDLE timer = threadTimer.handle;
 
     int64_t left = when - nowNs();
 
@@ -237,6 +242,7 @@ namespace {
     uint32_t                    next     = 0;
     std::deque<uint32_t>        acquired;
     bool                        waited   = false;
+    bool                        released = false;  // an image was released at least once
   };
 
   struct ActionSet { std::string name; };
@@ -282,6 +288,12 @@ namespace {
     uint32_t        layerMax      = 0;
     uint64_t        refused       = 0;
     uint64_t        noProjection  = 0;
+    // Live swapchains, and images of destroyed ones the GPU may still be writing to (the application's copies
+    // into a released image can still be queued when it destroys the swapchain; a compositor would hold the
+    // images that long). Freed some frames and at least a second later, or with the session.
+    std::vector<Swapchain*>     swapchains;
+    struct Retired { SwapchainImage image; uint64_t frame; int64_t time; };
+    std::vector<Retired>        retired;
   };
 
   struct Instance {
@@ -293,12 +305,27 @@ namespace {
     Session*                              session   = nullptr;
   };
 
+  // Live spaces (spaces may be created before a session in this runtime)
+  std::vector<Space*> g_spaces;
+
   // One lock for the runtime's state; xrWaitFrame does not hold it while it sleeps
   std::recursive_mutex g_mutex;
   Instance*            g_instance = nullptr;
 
   template<typename T> uint64_t toHandle(T* object) { return uint64_t(uintptr_t(object)); }
   template<typename T> T* fromHandle(uint64_t handle) { return reinterpret_cast<T*>(uintptr_t(handle)); }
+
+  // A swapchain or space handle checked against the live ones; null for a wrong or destroyed handle
+  Swapchain* liveSwapchain(uint64_t handle) {
+    Swapchain* chain = fromHandle<Swapchain>(handle);
+    Session* s = g_instance ? g_instance->session : nullptr;
+    return chain && s && std::find(s->swapchains.begin(), s->swapchains.end(), chain) != s->swapchains.end() ? chain : nullptr;
+  }
+
+  Space* liveSpace(uint64_t handle) {
+    Space* space = fromHandle<Space>(handle);
+    return space && std::find(g_spaces.begin(), g_spaces.end(), space) != g_spaces.end() ? space : nullptr;
+  }
 
   void pushEvent(Instance* instance, const void* event, size_t size) {
     XrEventDataBuffer buffer = { XR_TYPE_EVENT_DATA_BUFFER };
@@ -422,6 +449,11 @@ namespace {
     if (!info || !out)
       return XR_ERROR_VALIDATION_FAILURE;
 
+    // Only OpenXR 1.0 is implemented
+    XrVersion api = info->applicationInfo.apiVersion;
+    if (XR_VERSION_MAJOR(api) != 1 || XR_VERSION_MINOR(api) != 0)
+      return XR_ERROR_API_VERSION_UNSUPPORTED;
+
     for (uint32_t i = 0; i < info->enabledExtensionCount; i++) {
       if (std::strcmp(info->enabledExtensionNames[i], XR_KHR_VULKAN_ENABLE_EXTENSION_NAME))
         return XR_ERROR_EXTENSION_NOT_PRESENT;
@@ -441,12 +473,21 @@ namespace {
     return XR_SUCCESS;
   }
 
+  XRAPI_ATTR XrResult XRAPI_CALL xrDestroySession(XrSession session);
+
   XRAPI_ATTR XrResult XRAPI_CALL xrDestroyInstance(XrInstance instance) {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
     Instance* i = fromHandle<Instance>(uint64_t(instance));
 
     if (!i || i != g_instance)
       return XR_ERROR_HANDLE_INVALID;
+
+    if (i->session)
+      xrDestroySession(XrSession(toHandle(i->session)));
+
+    for (Space* space : g_spaces)
+      delete space;
+    g_spaces.clear();
 
     delete i;
     g_instance = nullptr;
@@ -486,6 +527,16 @@ namespace {
       case XR_ERROR_GRAPHICS_DEVICE_INVALID: name = "XR_ERROR_GRAPHICS_DEVICE_INVALID"; break;
       case XR_ERROR_SWAPCHAIN_FORMAT_UNSUPPORTED: name = "XR_ERROR_SWAPCHAIN_FORMAT_UNSUPPORTED"; break;
       case XR_ERROR_PATH_INVALID:            name = "XR_ERROR_PATH_INVALID"; break;
+      case XR_ERROR_PATH_FORMAT_INVALID:     name = "XR_ERROR_PATH_FORMAT_INVALID"; break;
+      case XR_ERROR_LIMIT_REACHED:           name = "XR_ERROR_LIMIT_REACHED"; break;
+      case XR_ERROR_LAYER_INVALID:           name = "XR_ERROR_LAYER_INVALID"; break;
+      case XR_ERROR_SYSTEM_INVALID:          name = "XR_ERROR_SYSTEM_INVALID"; break;
+      case XR_ERROR_FORM_FACTOR_UNSUPPORTED: name = "XR_ERROR_FORM_FACTOR_UNSUPPORTED"; break;
+      case XR_ERROR_API_VERSION_UNSUPPORTED: name = "XR_ERROR_API_VERSION_UNSUPPORTED"; break;
+      case XR_ERROR_API_LAYER_NOT_PRESENT:   name = "XR_ERROR_API_LAYER_NOT_PRESENT"; break;
+      case XR_ERROR_REFERENCE_SPACE_UNSUPPORTED: name = "XR_ERROR_REFERENCE_SPACE_UNSUPPORTED"; break;
+      case XR_ERROR_VIEW_CONFIGURATION_TYPE_UNSUPPORTED: name = "XR_ERROR_VIEW_CONFIGURATION_TYPE_UNSUPPORTED"; break;
+      case XR_ERROR_ENVIRONMENT_BLEND_MODE_UNSUPPORTED: name = "XR_ERROR_ENVIRONMENT_BLEND_MODE_UNSUPPORTED"; break;
       default: break;
     }
 
@@ -705,6 +756,35 @@ namespace {
     return true;
   }
 
+  void freeImage(const Vulkan& vk, const SwapchainImage& i) {
+    if (i.image)
+      vk.destroyImage(vk.device, i.image, nullptr);
+    if (i.memory)
+      vk.freeMemory(vk.device, i.memory, nullptr);
+  }
+
+  void destroyImages(Swapchain* chain) {
+    for (SwapchainImage& i : chain->images)
+      freeImage(chain->session->vk, i);
+    chain->images.clear();
+  }
+
+  // Frees retired images once the GPU is surely done with them; all of them with force (session end)
+  void freeRetired(Session* s, bool force) {
+    constexpr uint64_t Frames = 8;
+    constexpr int64_t  Ns     = 1000000000;
+    int64_t now = nowNs();
+
+    auto done = [&] (const Session::Retired& r) {
+      if (!force && (s->framesTotal < r.frame + Frames || now < r.time + Ns))
+        return false;
+      freeImage(s->vk, r.image);
+      return true;
+    };
+
+    s->retired.erase(std::remove_if(s->retired.begin(), s->retired.end(), done), s->retired.end());
+  }
+
   // ---------------------------------------------------------------- session
 
   XRAPI_ATTR XrResult XRAPI_CALL xrCreateSession(XrInstance instance, const XrSessionCreateInfo* info, XrSession* out) {
@@ -756,6 +836,32 @@ namespace {
       return XR_ERROR_HANDLE_INVALID;
 
     logLine("session destroyed after %llu frames, %llu refused", (unsigned long long) s->framesTotal, (unsigned long long) s->refused);
+
+    // Its children go with it (the application has waited for its GPU work by now)
+    for (Swapchain* chain : s->swapchains) {
+      destroyImages(chain);
+      delete chain;
+    }
+    s->swapchains.clear();
+    freeRetired(s, true);
+
+    for (auto it = g_spaces.begin(); it != g_spaces.end(); ) {
+      if ((*it)->session == s) {
+        delete *it;
+        it = g_spaces.erase(it);
+      } else {
+        ++it;
+      }
+    }
+
+    // Its queued events must not reach a later session that may get the same handle value
+    XrSession handle = XrSession(toHandle(s));
+    auto stale = [&] (const XrEventDataBuffer& e) {
+      return e.type == XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED
+        && reinterpret_cast<const XrEventDataSessionStateChanged&>(e).session == handle;
+    };
+    g_instance->events.erase(std::remove_if(g_instance->events.begin(), g_instance->events.end(), stale), g_instance->events.end());
+
     g_instance->session = nullptr;
     delete s;
     return XR_SUCCESS;
@@ -844,6 +950,7 @@ namespace {
     if (space->reference == XR_REFERENCE_SPACE_TYPE_LOCAL)
       space->offset = compose({ {}, { 0.0f, HeadHeight, 0.0f } }, space->offset);
 
+    g_spaces.push_back(space);
     *out = XrSpace(toHandle(space));
     return XR_SUCCESS;
   }
@@ -859,23 +966,27 @@ namespace {
     space->kind    = SpaceKind::Action;
     space->hand    = handOf(g_instance, info->subactionPath);
     space->offset  = fromXr(info->poseInActionSpace);
+    g_spaces.push_back(space);
     *out = XrSpace(toHandle(space));
     return XR_SUCCESS;
   }
 
   XRAPI_ATTR XrResult XRAPI_CALL xrDestroySpace(XrSpace space) {
-    Space* s = fromHandle<Space>(uint64_t(space));
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    Space* s = liveSpace(uint64_t(space));
 
     if (!s)
       return XR_ERROR_HANDLE_INVALID;
 
+    g_spaces.erase(std::find(g_spaces.begin(), g_spaces.end(), s));
     delete s;
     return XR_SUCCESS;
   }
 
   XRAPI_ATTR XrResult XRAPI_CALL xrLocateSpace(XrSpace space, XrSpace baseSpace, XrTime, XrSpaceLocation* location) {
-    Space* s = fromHandle<Space>(uint64_t(space));
-    Space* b = fromHandle<Space>(uint64_t(baseSpace));
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    Space* s = liveSpace(uint64_t(space));
+    Space* b = liveSpace(uint64_t(baseSpace));
 
     if (!s || !b || !location)
       return XR_ERROR_HANDLE_INVALID;
@@ -904,7 +1015,8 @@ namespace {
     if (info->viewConfigurationType != XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO)
       return XR_ERROR_VIEW_CONFIGURATION_TYPE_UNSUPPORTED;
 
-    Space* base = fromHandle<Space>(uint64_t(info->space));
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    Space* base = liveSpace(uint64_t(info->space));
 
     if (!base)
       return XR_ERROR_HANDLE_INVALID;
@@ -1087,18 +1199,6 @@ namespace {
     return copyOut(capacity, count, formats, Formats, uint32_t(std::size(Formats)));
   }
 
-  void destroyImages(Swapchain* chain) {
-    const Vulkan& vk = chain->session->vk;
-
-    for (SwapchainImage& i : chain->images) {
-      if (i.image)
-        vk.destroyImage(vk.device, i.image, nullptr);
-      if (i.memory)
-        vk.freeMemory(vk.device, i.memory, nullptr);
-    }
-    chain->images.clear();
-  }
-
   XRAPI_ATTR XrResult XRAPI_CALL xrCreateSwapchain(XrSession session, const XrSwapchainCreateInfo* info, XrSwapchain* out) {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
     Session* s = fromHandle<Session>(uint64_t(session));
@@ -1179,18 +1279,24 @@ namespace {
     }
 
     logLine("swapchain %ux%u format %lld", info->width, info->height, (long long) info->format);
+    s->swapchains.push_back(chain.get());
     *out = XrSwapchain(toHandle(chain.release()));
     return XR_SUCCESS;
   }
 
   XRAPI_ATTR XrResult XRAPI_CALL xrDestroySwapchain(XrSwapchain swapchain) {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
-    Swapchain* chain = fromHandle<Swapchain>(uint64_t(swapchain));
+    Swapchain* chain = liveSwapchain(uint64_t(swapchain));
 
     if (!chain)
       return XR_ERROR_HANDLE_INVALID;
 
-    destroyImages(chain);
+    Session* s = chain->session;
+
+    for (const SwapchainImage& i : chain->images)
+      s->retired.push_back({ i, s->framesTotal, nowNs() });
+
+    s->swapchains.erase(std::find(s->swapchains.begin(), s->swapchains.end(), chain));
     delete chain;
     return XR_SUCCESS;
   }
@@ -1198,7 +1304,7 @@ namespace {
   XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateSwapchainImages(XrSwapchain swapchain, uint32_t capacity, uint32_t* count,
       XrSwapchainImageBaseHeader* images) {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
-    Swapchain* chain = fromHandle<Swapchain>(uint64_t(swapchain));
+    Swapchain* chain = liveSwapchain(uint64_t(swapchain));
 
     if (!chain || !count)
       return XR_ERROR_HANDLE_INVALID;
@@ -1223,7 +1329,7 @@ namespace {
 
   XRAPI_ATTR XrResult XRAPI_CALL xrAcquireSwapchainImage(XrSwapchain swapchain, const XrSwapchainImageAcquireInfo*, uint32_t* index) {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
-    Swapchain* chain = fromHandle<Swapchain>(uint64_t(swapchain));
+    Swapchain* chain = liveSwapchain(uint64_t(swapchain));
 
     if (!chain || !index)
       return XR_ERROR_HANDLE_INVALID;
@@ -1239,7 +1345,7 @@ namespace {
 
   XRAPI_ATTR XrResult XRAPI_CALL xrWaitSwapchainImage(XrSwapchain swapchain, const XrSwapchainImageWaitInfo*) {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
-    Swapchain* chain = fromHandle<Swapchain>(uint64_t(swapchain));
+    Swapchain* chain = liveSwapchain(uint64_t(swapchain));
 
     if (!chain)
       return XR_ERROR_HANDLE_INVALID;
@@ -1253,7 +1359,7 @@ namespace {
 
   XRAPI_ATTR XrResult XRAPI_CALL xrReleaseSwapchainImage(XrSwapchain swapchain, const XrSwapchainImageReleaseInfo*) {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
-    Swapchain* chain = fromHandle<Swapchain>(uint64_t(swapchain));
+    Swapchain* chain = liveSwapchain(uint64_t(swapchain));
 
     if (!chain)
       return XR_ERROR_HANDLE_INVALID;
@@ -1262,7 +1368,8 @@ namespace {
       return XR_ERROR_CALL_ORDER_INVALID;
 
     chain->acquired.pop_front();
-    chain->waited = false;
+    chain->waited   = false;
+    chain->released = true;
     return XR_SUCCESS;
   }
 
@@ -1366,6 +1473,8 @@ namespace {
     if (info->environmentBlendMode != XR_ENVIRONMENT_BLEND_MODE_OPAQUE)
       return XR_ERROR_ENVIRONMENT_BLEND_MODE_UNSUPPORTED;
 
+    freeRetired(s, false);
+
     if (info->layerCount > settings().layers) {
       if (!s->refused)
         logLine("frame refused: %u layers, the limit is %u", info->layerCount, settings().layers);
@@ -1387,7 +1496,17 @@ namespace {
         if (p->viewCount != 2)
           return XR_ERROR_VALIDATION_FAILURE;
         projection = true;
-      } else if (layer->type != XR_TYPE_COMPOSITION_LAYER_QUAD) {
+      } else if (layer->type == XR_TYPE_COMPOSITION_LAYER_QUAD) {
+        // As a real runtime checks: a live swapchain with a released image, and a live space
+        auto* q = reinterpret_cast<const XrCompositionLayerQuad*>(layer);
+        Swapchain* chain = liveSwapchain(uint64_t(q->subImage.swapchain));
+
+        if (!chain || !liveSpace(uint64_t(q->space)))
+          return XR_ERROR_HANDLE_INVALID;
+
+        if (!chain->released)
+          return XR_ERROR_LAYER_INVALID;
+      } else {
         return XR_ERROR_LAYER_INVALID;
       }
     }
@@ -1510,7 +1629,7 @@ extern "C" XrResult XRAPI_CALL xrNegotiateLoaderRuntimeInterface(const XrNegotia
     return XR_ERROR_INITIALIZATION_FAILED;
 
   request->runtimeInterfaceVersion = XR_CURRENT_LOADER_RUNTIME_VERSION;
-  request->runtimeApiVersion       = std::min<XrVersion>(XR_CURRENT_API_VERSION, loaderInfo->maxApiVersion);
+  request->runtimeApiVersion       = std::min<XrVersion>(XR_API_VERSION_1_0, loaderInfo->maxApiVersion);
   request->getInstanceProcAddr     = xrGetInstanceProcAddr;
   logLine("loaded by the OpenXR loader");
   return XR_SUCCESS;

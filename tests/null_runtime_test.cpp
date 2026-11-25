@@ -38,6 +38,7 @@ int main(int argc, char** argv) {
 
   XrNegotiateRuntimeRequest request = { XR_LOADER_INTERFACE_STRUCT_RUNTIME_REQUEST, XR_RUNTIME_INFO_STRUCT_VERSION, sizeof(XrNegotiateRuntimeRequest) };
   CHECK(negotiate(&info, &request) == XR_SUCCESS);
+  CHECK(XR_VERSION_MAJOR(request.runtimeApiVersion) == 1 && XR_VERSION_MINOR(request.runtimeApiVersion) == 0);
   CHECK(request.getInstanceProcAddr != nullptr);
 
   PFN_xrGetInstanceProcAddr gipa = request.getInstanceProcAddr;
@@ -69,6 +70,9 @@ int main(int argc, char** argv) {
 
   const char* vulkan[] = { "XR_KHR_vulkan_enable" };
   ci.enabledExtensionNames = vulkan;
+  ci.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 1, 0);
+  CHECK(create(&ci, &instance) == XR_ERROR_API_VERSION_UNSUPPORTED);  // only 1.0 is implemented
+  ci.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
   CHECK(create(&ci, &instance) == XR_SUCCESS && instance != XR_NULL_HANDLE);
 
   auto getSystem = reinterpret_cast<PFN_xrGetSystem>(get(instance, "xrGetSystem"));
@@ -119,6 +123,12 @@ int main(int argc, char** argv) {
 
   auto destroySpace = reinterpret_cast<PFN_xrDestroySpace>(get(instance, "xrDestroySpace"));
   CHECK(destroySpace(stage) == XR_SUCCESS && destroySpace(view) == XR_SUCCESS);
+  CHECK(destroySpace(stage) == XR_ERROR_HANDLE_INVALID);                  // destroyed handles are caught
+  CHECK(locate(view, stage, 0, &location) == XR_ERROR_HANDLE_INVALID);
+
+  auto resultName = reinterpret_cast<PFN_xrResultToString>(get(instance, "xrResultToString"));
+  char name[XR_MAX_RESULT_STRING_SIZE] = { };
+  CHECK(resultName(instance, XR_ERROR_LAYER_INVALID, name) == XR_SUCCESS && !std::strcmp(name, "XR_ERROR_LAYER_INVALID"));
 
   auto poll = reinterpret_cast<PFN_xrPollEvent>(get(instance, "xrPollEvent"));
   XrEventDataBuffer event = { XR_TYPE_EVENT_DATA_BUFFER };
