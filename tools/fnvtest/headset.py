@@ -89,7 +89,7 @@ def ask(session, text, buttons, timeout=None, poll=0.5, too_fast=TOO_FAST, retri
 
     An answer within too_fast seconds of the box appearing is taken for a stray press (a button the person
     meant for the game while the box popped up): it is thrown away and the question asked again, at most
-    `retries` times."""
+    `retries` times. The timeout counts per attempt, so the whole wait can be up to (retries + 1) * timeout."""
     session.require(game=True)
     check_buttons(buttons)
     for attempt in range(retries + 1):
@@ -122,7 +122,8 @@ IGNORE_SIGNAL = 3.0
 def look(session, hint, max_seconds=60, remind_after=30, poll=0.5):
     """A viewing pause before a question: shows what to look at, then lets the game run until the person raises
     both hands (the done signal must be on, see start) or max_seconds pass. Returns True when they signalled.
-    The left hand alone (repeat) shows the message again and starts the wait anew.
+    The left hand alone (repeat) shows the message again and starts the wait anew, so max_seconds counts from
+    the last repeat.
 
     A question's message box stops or covers the game and hides FNVVR's panels, so the person looks first.
     A signal in the first IGNORE_SIGNAL seconds does not count."""
@@ -131,13 +132,12 @@ def look(session, hint, max_seconds=60, remind_after=30, poll=0.5):
     begin = time.monotonic()
     # A signal in the first seconds is a leftover of the step before (hands still up), not this step's
     time.sleep(IGNORE_SIGNAL)
-    base = signal_count(session) or 0
-    repeats = repeat_count(session) or 0
+    base, repeats = _signals(session)
     reminded = False
     while time.monotonic() - begin < max_seconds:
-        if (signal_count(session) or 0) > base:
+        done, now = _signals(session)
+        if done > base:
             return True
-        now = repeat_count(session) or 0
         if now > repeats:
             # The left hand alone: the person missed the step, show it again and wait anew
             repeats = now
@@ -179,6 +179,13 @@ def signal_count(session):
     session.require(vr=True)
     value = session.vr.ask("state").fields().get("signal", "off")
     return None if value == "off" else int(value)
+
+
+def _signals(session):
+    """(done, repeat) counts from one state request, 0 while off."""
+    session.require(vr=True)
+    f = session.vr.ask("state").fields()
+    return tuple(0 if f.get(k, "off") == "off" else int(f[k]) for k in ("signal", "repeat"))
 
 
 def repeat_count(session):
