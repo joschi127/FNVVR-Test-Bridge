@@ -57,6 +57,11 @@ panel's look, a readability question, a click flow and the session tools themsel
   minute), and only then the question. Every question gets a "Let me re-check" button that repeats the message,
   the pause and the question, so nobody has to answer without having looked. `headset.ask_after_look()` does
   this; questions coming one right after the other were too fast to judge (a session in November 2026).
+- **Expect stray presses.** A question can pop up while the person still presses buttons for the game, and the
+  press lands on the message box. `headset.ask()` throws away answers within two seconds of the box and asks
+  again; `headset.look()` ignores a hands-up signal in the first three seconds of a step. At most three answers
+  per `ask_after_look()` (the fourth button is the re-check); `check_buttons()` fails a script before anything
+  is shown, and `headset.on_error()` tells the person in the headset when the script stopped.
 - **Let the game tell you what happened** (`eval`, `state`, FNVVR's `pipboy`, the hovered interface element),
   and keep questions for what only the person can judge: looks, readability, feel.
 

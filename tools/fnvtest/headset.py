@@ -80,37 +80,57 @@ class on_error:
         return False
 
 
-def ask(session, text, buttons, timeout=None, poll=0.5):
+TOO_FAST = 2.0
+
+
+def ask(session, text, buttons, timeout=None, poll=0.5, too_fast=TOO_FAST, retries=3):
     """Asks with the game's message box (one to four buttons); returns the chosen button's text, or None
-    when the timeout ran out. Only one question at a time."""
+    when the timeout ran out. Only one question at a time.
+
+    An answer within too_fast seconds of the box appearing is taken for a stray press (a button the person
+    meant for the game while the box popped up): it is thrown away and the question asked again, at most
+    `retries` times."""
     session.require(game=True)
     check_buttons(buttons)
-    answer = session.game.ask("ask " + " | ".join([text] + list(buttons)))
-    if not answer.ok:
-        raise ChannelError(f"ask: {answer.final}")
-    start = time.monotonic()
-    while timeout is None or time.monotonic() - start < timeout:
-        reply = session.game.ask("answer").detail.strip()
-        if reply not in ("pending", "none"):
-            return reply.split(" ", 1)[1] if " " in reply else reply
-        if reply == "none":
+    for attempt in range(retries + 1):
+        answer = session.game.ask("ask " + " | ".join([text] + list(buttons)))
+        if not answer.ok:
+            raise ChannelError(f"ask: {answer.final}")
+        start = time.monotonic()
+        reply = None
+        while timeout is None or time.monotonic() - start < timeout:
+            reply = session.game.ask("answer").detail.strip()
+            if reply == "none":
+                return None
+            if reply != "pending":
+                break
+            time.sleep(poll)
+        else:
             return None
-        time.sleep(poll)
+        chosen = reply.split(" ", 1)[1] if " " in reply else reply
+        if time.monotonic() - start >= too_fast or attempt == retries:
+            return chosen
+        notify(session, "Please answer again", 4)
+        time.sleep(1.0)
     return None
 
 
 RECHECK = "Let me re-check"
+IGNORE_SIGNAL = 3.0
 
 
 def look(session, hint, max_seconds=60, remind_after=30, poll=0.5):
     """A viewing pause before a question: shows what to look at, then lets the game run until the person raises
     both hands (the done signal must be on, see start) or max_seconds pass. Returns True when they signalled.
 
-    A question's message box stops or covers the game and hides FNVVR's panels, so the person looks first."""
-    base = signal_count(session) or 0
+    A question's message box stops or covers the game and hides FNVVR's panels, so the person looks first.
+    A signal in the first IGNORE_SIGNAL seconds does not count."""
     text = hint + " - raise both hands when ready"
     notify(session, text)
     begin = time.monotonic()
+    # A signal in the first seconds is a leftover of the step before (hands still up), not this step's
+    time.sleep(IGNORE_SIGNAL)
+    base = signal_count(session) or 0
     reminded = False
     while time.monotonic() - begin < max_seconds:
         if (signal_count(session) or 0) > base:
