@@ -47,6 +47,10 @@ then start `FalloutNV.exe` from that environment with `d3d9.vrBackend = openxr` 
 DLL as `./fnvvr_null_xr.dll`: a bare file name would make the loader search the system path instead of the
 manifest's folder.
 
+The runtime needs no screen: it uses only the graphics device and a timer, and FNVVR hides the game's window
+in VR. Runs work with the monitor switched off or showing another input; what a test needs to see comes from
+the VR test channel's captures. A PC with no display at all reported by Windows is untested.
+
 `loader_probe <openxr_loader.dll>` shows whether a loader accepts the runtime that `XR_RUNTIME_JSON` names
 (set `XR_LOADER_DEBUG=all` for the loader's own messages). `null_runtime_test` (ctest) checks the runtime
 without a graphics device.

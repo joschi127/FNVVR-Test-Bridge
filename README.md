@@ -118,6 +118,16 @@ with Session(game=True, vr=True) as s:
   by setting the head and left hand so that the wrist is looked at, `pipboy(s)` tells its state and where its
   screen is (all through FNVVR's VR channel).
 
+## Without a headset or a screen
+
+- No headset: run FNVVR with its emulator (`d3d9.vrBackend = emulator`), with SteamVR's null driver (OpenVR),
+  or with the [null OpenXR runtime](openxr-null-runtime/README.md) in this repository (OpenXR, no VR software
+  needed).
+- No screen: FNVVR's captures (`vr:capture eyes`, `vr:capture panel`) are read back from the GPU, so tests run
+  and give full images with the monitor switched off or showing another input (tried with the emulator and the
+  null OpenXR runtime). `tools/window_shot.py` needs the window to be shown. A PC with no display at all
+  reported by Windows is untested.
+
 ## Performance and memory
 
 Idle and enabled, the plugin does one atomic load per game frame; its pipe thread reserves 64 KB of stack.
